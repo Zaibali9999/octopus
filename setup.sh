@@ -2,6 +2,7 @@
 
 #  -------------------------------------------------------------
 #  author        Giga
+# contribution 	Zabi Ullah
 #  project       qeeqbox/octopus
 #  email         gigaqeeq@gmail.com
 #  licensee      AGPL-3.0
@@ -117,26 +118,37 @@ fi
 
 mysql () {
 port_="3306"
+
 if [ ! -z "$2" -a "$2" != "default" ]; then
     port_=$2
 fi
+
 create_file "$1"
+
 { \
 echo mysql-community-server mysql-community-server/data-dir select ''; \
 echo mysql-community-server mysql-community-server/root-pass password 'sysbackup'; \
 echo mysql-community-server mysql-community-server/re-root-pass password 'sysbackup'; \
 echo mysql-community-server mysql-community-server/remove-test-db select false; \
 } | debconf-set-selections && \
-DEBIAN_FRONTEND=noninteractive apt-get -yqq install mysql-server
+DEBIAN_FRONTEND=noninteractive apt-get -y install mysql-server
 usermod -d /var/lib/mysql/ mysql
-service mysql start && \
-mysql -u root -psysbackup -e 'ALTER USER "root"@"localhost" IDENTIFIED WITH mysql_native_password BY "sysbackup";' && \
-mysql -u root -psysbackup -e 'GRANT ALL PRIVILEGES ON *.* TO "root"@"%" IDENTIFIED BY "sysbackup";' && \
+
+service mysql start
+
+#mysql -u root -psysbackup -e 'ALTER USER "root"@"localhost" IDENTIFIED WITH mysql_native_password BY "sysbackup";' && \
+#mysql -u root -psysbackup -e 'CREATE USER IF NOT EXISTS "root"@"%" IDENTIFIED BY "sysbackup";' && \
+#mysql -u root -psysbackup -e 'GRANT ALL PRIVILEGES ON *.* TO "root"@"%";' && \
+#mysql -u root -psysbackup -e 'FLUSH PRIVILEGES;'
+
 service mysql stop && \
-sed -e 's/^bind-address\t.*$/bind-address = 0.0.0.0/' -i /etc/mysql/mysql.conf.d/mysqld.cnf && \
-sed -e 's/^#general_log_file.*/general_log_file = '$2'' -i /etc/mysql/mysql.conf.d/mysqld.cnf &&\
-sed -e 's/^log_error \=.*/log_error = '$1'' -i /etc/mysql/mysql.conf.d/mysqld.cnf &&\
-sed -e 's/^#general_log.*/general_log = 3/' -i /etc/mysql/mysql.conf.d/mysqld.cnf
+cp /etc/mysql/mysql.conf.d/mysqld.cnf /etc/mysql/mysql.conf.d/mysqld.cnf.bak && \
+sed -i 's/^bind-address[[:space:]]*.*/bind-address = 0.0.0.0/' /etc/mysql/mysql.conf.d/mysqld.cnf && \
+sed -i "s|^#general_log_file.*|general_log_file = $2|" /etc/mysql/mysql.conf.d/mysqld.cnf && \
+sed -i "s|^log_error[[:space:]]*=.*|log_error = $1|" /etc/mysql/mysql.conf.d/mysqld.cnf && \
+sed -i 's/^#general_log.*/general_log = 3/' /etc/mysql/mysql.conf.d/mysqld.cnf
+
+
 mkdir -p /var/run/mysqld && \
 chown -R mysql:mysql /var/lib/mysql /var/run/mysqld && \
 chmod 777 /var/run/mysqld
@@ -147,6 +159,7 @@ autorestart=true
 user=root
 
 EOL
+service mysql start
 }
 
 redis () {
@@ -496,6 +509,7 @@ config_iptables () {
 }
 
 setup_server_with_port() {
+    echo $1	
     case $1 in
     "ssh"|"all") ssh "/var/log/ssh.log" $2;;&
     "rdp"|"all") xrdp "/var/log/xrdp.log" $2;;&
@@ -503,7 +517,7 @@ setup_server_with_port() {
     "ftp"|"all") ftp "/var/log/vsftpd.log" $2;;&
     "samba"|"all") samba "/var/log/smb.log" $2;;&
     "mongodb"|"all") mongodb "/var/log/mongodb/mongod.log" $2;;&
-    #"mysql"|"all") mysql "/var/log/mysql/mysql.log" $2;;&
+    "mysql"|"all") mysql "/var/log/mysql/mysql.log" $2;;&
     "redis"|"all") redis "/var/log/redis-monitor.log" $2;;&
     "vnc"|"all") vnc "/var/log/vnc" $2;;&
     "proxy"|"all") squid "/var/log/squid/access.log" $2;;&
@@ -513,8 +527,10 @@ setup_server_with_port() {
 parse_input () {
     servers=($(echo "$1" | tr ',' '\n'))
     for server in "${servers[@]}"
-    do
+    do	
+   
         servers_port=($(echo "$server" | tr ':' '\n'))
+        
         if [ "${#servers_port[@]}" -eq 1 ]; then
             setup_server_with_port ${servers_port[0]} "default"
         elif [ "${#servers_port[@]}" -eq 2 ]; then 
